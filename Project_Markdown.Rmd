@@ -1,0 +1,92 @@
+---
+title: 'Human Activity Recognition'
+author: 'PML Project Writeup - September 25, 2015'
+output: html_document
+fontsize: 10 pt
+---
+# Project Summary
+<p>Today's technology offers inexpensive ways to measure human activity.  The capability to reliably identify human activities opens up endless uses for the technology.  This project will attempt to determine from sensor data what activity is being performed.  It will be a model using Random Forests and then apply the model to 20 test cases.
+
+# Background
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).  
+  
+Read more: http://groupware.les.inf.puc-rio.br/har#dataset#ixzz3mmHse2J8
+
+# Data Preparation 
+```{r libraries, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+```
+
+Two datasets were provided for the project.  The first below with training data had 19,622 records with 160 variables. The source data can be acquired from the link below.  This dataset was split into two training (60%) and testing (40%) for developing and testing the model.   
+  
+Training Data: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+  
+  
+The most important step in developing the model is preparation and inclusion/exclusion of predictors in the model.  Data was prepared in the following manner.   
+    1. First six variables containing subject names and timestamps were removed.  
+    2. Variables with near zero variance were removed as not good predictors.   
+    3. Variables with >= 60% null or missing values removed.  
+    
+```{r, echo=TRUE}
+Activity <- read.csv("pml-training.csv")
+Activity <- Activity[,c(7:160)]
+nzvcol <- nearZeroVar(Activity)
+Activity <- Activity[, -nzvcol]
+
+cntlength <- sapply(Activity, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+nullcol <- names(cntlength[cntlength < 0.6 * length(Activity$classe)])
+Activity <- Activity[, !names(Activity) %in% nullcol]
+```
+
+The remaining dataset contains 54 variables to be used for model.  Activity data was then partitioned into training and testing datasets using a 60/40 split.  
+```{r, echo=TRUE}
+set.seed(31)
+inTrain <- createDataPartition(y=Activity$classe, p=0.6, list =FALSE)
+
+training <- Activity[inTrain,]
+testing <- Activity[-inTrain,]
+dim(training)
+dim(testing)
+```
+
+# Random Forest Model Training
+This is fitting the model using Random Forest to train a model.  Model appears to have good fit.
+```{r Model_Training, echo=TRUE}
+modFitRF <- randomForest(classe ~., data=training) 
+print(modFitRF)
+```
+
+# Testing Random Forest Model
+Using the 40% testing dataset, the model predicts with 99.64% accuracy as show below.  This out of sample rate is the same as the OOB rate for the training data.  The sensitivity and specificity are high across all classes.
+```{r Model_Testing, echo=TRUE}
+pred <- predict(modFitRF,testing)
+testing$predRight <- pred==testing$classe
+confusionMatrix(pred,testing$classe)
+```
+
+# Validating the Model
+The final step is to predict the outcomes of 20 cases and output the results to text files.
+```{r Model_Validation, echo=TRUE}
+validationData <- read.csv("pml-testing.csv")
+
+predictions <- as.character(predict(modFitRF, validationData, type = "class"))
+print(predictions)
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("./SubmissionFiles/problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictions)
+```
+
+## References
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6. 
+
+Read more: http://groupware.les.inf.puc-rio.br/har#dataset#ixzz3mmFe9DNo
